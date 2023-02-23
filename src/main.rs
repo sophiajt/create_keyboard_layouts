@@ -10,7 +10,7 @@ use std::{
 use iter_tools::prelude::*;
 use rand::{seq::SliceRandom, thread_rng, RngCore};
 
-const ALGORITHM_VERSION: f64 = 4.416;
+const ALGORITHM_VERSION: f64 = 4.419;
 const MAX_SAMPLES_PER_CATEGORY: usize = 1000;
 const FAILED_TO_IMPROVE_LIMIT: usize = 1000;
 
@@ -23,7 +23,7 @@ const DOUBLE_TOP_OUTWARD: i64 = 3;
 const DOUBLE_MIDDLE_INWARD: i64 = 10;
 const DOUBLE_MIDDLE_OUTWARD: i64 = 5;
 
-const TRIPLE_TOP_INWARD: i64 = 25;
+const TRIPLE_TOP_INWARD: i64 = 35;
 const TRIPLE_TOP_OUTWARD: i64 = 25;
 const TRIPLE_MIDDLE_INWARD: i64 = 35;
 const TRIPLE_MIDDLE_OUTWARD: i64 = 25;
@@ -46,6 +46,12 @@ const MINOR_FINGER_CURL_PENALTY: i64 = -5;
 const PINKIE_PENALTY: i64 = -5;
 const TWO_ROW_MOVE_PENALTY: i64 = -10;
 const SAME_FINGER_PENALTY: i64 = -5;
+
+const USE_QUADRUPLE_ROLL: bool = false;
+
+// This will prevent using the ,./ keys
+const BOTTOM_RIGHT_PENALTY: i64 = -10000000;
+// const BOTTOM_RIGHT_PENALTY: i64 = 0;
 
 #[derive(Clone)]
 struct Keyboard {
@@ -109,16 +115,16 @@ impl Keyboard {
         }
     }
 
-    pub fn inas() -> Keyboard {
-        Keyboard {
-            name: "inas".into(),
-            rows: vec![
-                "pmfcqxluoy".into(),
-                "inasbkreht".into(),
-                "_vgdzjw___".into(),
-            ],
-        }
-    }
+    // pub fn inas() -> Keyboard {
+    //     Keyboard {
+    //         name: "inas".into(),
+    //         rows: vec![
+    //             "pmfcqxluoy".into(),
+    //             "inasbkreht".into(),
+    //             "_vgdzjw___".into(),
+    //         ],
+    //     }
+    // }
 
     pub fn random_layout() -> Keyboard {
         let mut keys: Vec<u8> = "abcdefghijklmnopqrstuvwxyz____".into();
@@ -465,7 +471,7 @@ impl Scorer {
             // Protect the bottom three keys so we can use what is usually there
             // This isn't strictly necessary but helps with adapting the layout
             if kb.rows[2][7] == byte.0 || kb.rows[2][8] == byte.0 || kb.rows[2][9] == byte.0 {
-                total += -10000000
+                total += BOTTOM_RIGHT_PENALTY
             }
         }
 
@@ -487,12 +493,15 @@ impl Scorer {
     }
 
     pub fn score_keyboard(&self, kb: &Keyboard) -> i64 {
-        let mut total: i64 = -10000000;
+        let mut total: i64 = 0;
 
         total += self.score_singles(kb);
         total += self.score_doubles(kb);
         total += self.score_triples(kb);
-        // total += self.score_quadruples(kb);
+        if USE_QUADRUPLE_ROLL {
+            total += self.score_quadruples(kb);
+        }
+
         total += self.score_penalties(kb);
 
         total
@@ -530,101 +539,6 @@ fn random_swap(kb: &mut Keyboard) {
     let prev = kb.rows[to_row][to_col];
     kb.rows[to_row][to_col] = kb.rows[from_row][from_col];
     kb.rows[from_row][from_col] = prev;
-}
-
-fn score_swap(
-    kb: &mut Keyboard,
-    from_row: usize,
-    from_col: usize,
-    to_row: usize,
-    to_col: usize,
-    scorer: &Scorer,
-) -> i64 {
-    let prev = kb.rows[to_row][to_col];
-    kb.rows[to_row][to_col] = kb.rows[from_row][from_col];
-    kb.rows[from_row][from_col] = prev;
-
-    let new_score = scorer.score_keyboard(kb);
-
-    // Move things back where they were
-    let prev = kb.rows[to_row][to_col];
-    kb.rows[to_row][to_col] = kb.rows[from_row][from_col];
-    kb.rows[from_row][from_col] = prev;
-
-    new_score
-}
-
-fn swap_with_best(kb: &mut Keyboard, scorer: &Scorer) -> Option<i64> {
-    let from_row = (rand::thread_rng().next_u64() % 3) as usize;
-    let from_col = (rand::thread_rng().next_u64() % 10) as usize;
-
-    let mut best_to_row = from_row;
-    let mut best_to_col = from_col;
-
-    let orig_score = scorer.score_keyboard(kb);
-
-    let mut best_score = orig_score;
-
-    for to_row in 0..3 {
-        for to_col in 0..9 {
-            let new_score = score_swap(kb, from_row, from_col, to_row, to_col, scorer);
-            if new_score > best_score {
-                best_to_row = to_row;
-                best_to_col = to_col;
-                best_score = new_score;
-            }
-        }
-    }
-
-    let prev = kb.rows[best_to_row][best_to_col];
-    kb.rows[best_to_row][best_to_col] = kb.rows[from_row][from_col];
-    kb.rows[from_row][from_col] = prev;
-
-    if best_to_col == from_col && best_to_row == from_row {
-        None
-    } else {
-        Some(best_score)
-    }
-}
-
-fn find_keyboard_climb_big(scorer: &Scorer) -> (i64, Keyboard) {
-    let mut keyboard = Keyboard::random_layout();
-
-    let mut current_score = scorer.score_keyboard(&keyboard);
-
-    loop {
-        let new_score = swap_with_best(&mut keyboard, scorer);
-
-        if let Some(new_score) = new_score {
-            current_score = new_score;
-        } else {
-            let mut best_score = current_score;
-            for from_row in 0..3 {
-                for from_col in 0..10 {
-                    for to_row in 0..3 {
-                        for to_col in 0..10 {
-                            let new_score = score_swap(
-                                &mut keyboard,
-                                from_row,
-                                from_col,
-                                to_row,
-                                to_col,
-                                scorer,
-                            );
-
-                            if new_score > best_score {
-                                best_score = new_score;
-                            }
-                        }
-                    }
-                }
-            }
-            if best_score == current_score {
-                break;
-            }
-        }
-    }
-    (current_score, keyboard)
 }
 
 fn find_keyboard(scorer: &Scorer) -> (i64, Keyboard) {
@@ -770,6 +684,31 @@ fn main() {
         return;
     }
 
+    let standard_keyboards = vec![
+        Keyboard::qwerty(),
+        Keyboard::dvorak(),
+        Keyboard::colemak(),
+        Keyboard::workman(),
+    ];
+
+    // Show the score for the standard keyboards
+    // for this round of scoring
+    let mut dictionary = HashMap::new();
+    for kb in &standard_keyboards {
+        let score = scorer.score_keyboard(kb);
+
+        dictionary.insert(kb.name.clone(), score);
+    }
+
+    let mut result: Vec<_> = dictionary.into_iter().collect();
+
+    result.sort_by(|a, b| (a.1).partial_cmp(&b.1).unwrap());
+
+    println!("algorithm: {}", ALGORITHM_VERSION);
+    for keyboard in result {
+        println!("{}: {}", keyboard.0, keyboard.1);
+    }
+
     // println!("Finding a keyboard...");
     // let kb = Keyboard::jt();
     // // let (kb, score) = find_keyboard(&scorer);
@@ -811,144 +750,5 @@ fn main() {
         }
         print!(".");
         let _ = std::io::stdout().flush();
-    }
-}
-
-fn compare() {
-    let keyboards = vec![
-        Keyboard::qwerty(),
-        Keyboard::dvorak(),
-        Keyboard::colemak(),
-        Keyboard::workman(),
-        Keyboard::inas(),
-    ];
-
-    let mut dictionary = HashMap::new();
-
-    for keyboard in &keyboards {
-        dictionary.insert(keyboard.name.clone(), 0);
-    }
-
-    let mut input = vec![];
-    let mut debug = false;
-
-    println!("Loading in corpus...");
-    for file in std::env::args().skip(1) {
-        if file == "--debug" {
-            debug = true;
-            continue;
-        }
-        let file = std::fs::File::open(file).unwrap();
-
-        let mut handle = file.take(100 * 1024 * 1024);
-
-        let mut buf = vec![0u8; 100 * 1024 * 1024];
-        let _ = handle.read(&mut buf).unwrap();
-
-        // let mut buf = buf.to_ascii_lowercase();
-
-        input.append(&mut buf);
-    }
-
-    // Work around spaces
-    // let input: Vec<_> = input.into_iter().filter(|x| *x != b' ').collect();
-
-    println!("Counting singles...");
-    // Single byte counts
-    let mut single_byte: HashMap<u8, i64> = HashMap::new();
-    for a in input.iter() {
-        if (b'a'..=b'z').contains(a) {
-            *single_byte.entry(*a).or_default() += 1;
-        }
-    }
-
-    println!("Counting doubles...");
-    // Double byte counts
-    let mut double_byte: HashMap<Vec<u8>, i64> = HashMap::new();
-    for (a, b) in input.iter().tuple_windows() {
-        if (b'a'..=b'z').contains(a) && (b'a'..=b'z').contains(b) && a != b {
-            let item = vec![*a, *b];
-            *double_byte.entry(item).or_default() += 1;
-        }
-    }
-
-    println!("Counting triples...");
-    // Triple byte counts
-    let mut triple_byte: HashMap<Vec<u8>, i64> = HashMap::new();
-    for (a, b, c) in input.iter().tuple_windows() {
-        if (b'a'..=b'z').contains(a)
-            && (b'a'..=b'z').contains(b)
-            && (b'a'..=b'z').contains(c)
-            && ![b, c].contains(&a)
-            && b != c
-        {
-            let item = vec![*a, *b, *c];
-
-            *triple_byte.entry(item).or_default() += 1;
-        }
-    }
-
-    println!("Counting quadruples...");
-    // Quadruple byte counts
-    let mut quadruple_byte: HashMap<Vec<u8>, i64> = HashMap::new();
-    for (a, b, c, d) in input.iter().tuple_windows() {
-        if (b'a'..=b'z').contains(a)
-            && (b'a'..=b'z').contains(b)
-            && (b'a'..=b'z').contains(c)
-            && (b'a'..=b'z').contains(d)
-            && ![b, c, d].contains(&a)
-            && ![c, d].contains(&b)
-            && c != d
-        {
-            let item = vec![*a, *b, *c, *d];
-
-            *quadruple_byte.entry(item).or_default() += 1;
-        }
-    }
-
-    let single_byte: Vec<_> = single_byte
-        .into_iter()
-        .sorted_by(|a, b| Ord::cmp(&b.1, &a.1))
-        .take(MAX_SAMPLES_PER_CATEGORY)
-        .collect();
-
-    let double_byte: Vec<_> = double_byte
-        .into_iter()
-        .sorted_by(|a, b| Ord::cmp(&b.1, &a.1))
-        .take(MAX_SAMPLES_PER_CATEGORY)
-        .collect();
-
-    let triple_byte: Vec<_> = triple_byte
-        .into_iter()
-        .sorted_by(|a, b| Ord::cmp(&b.1, &a.1))
-        .take(MAX_SAMPLES_PER_CATEGORY)
-        .collect();
-
-    let quadruple_byte: Vec<_> = quadruple_byte
-        .into_iter()
-        .sorted_by(|a, b| Ord::cmp(&b.1, &a.1))
-        .take(MAX_SAMPLES_PER_CATEGORY)
-        .collect();
-
-    let scorer = Scorer {
-        single_byte,
-        double_byte,
-        triple_byte,
-        quadruple_byte,
-    };
-
-    for kb in &keyboards {
-        let score = scorer.score_keyboard(kb);
-
-        dictionary.insert(kb.name.clone(), score);
-    }
-
-    let mut result: Vec<_> = dictionary.into_iter().collect();
-
-    result.sort_by(|a, b| (a.1).partial_cmp(&b.1).unwrap());
-
-    println!("algorithm: {}", ALGORITHM_VERSION);
-    for keyboard in result {
-        println!("{}: {}", keyboard.0, keyboard.1);
     }
 }

@@ -6,7 +6,7 @@ You'll need to install Rust to build this.
 
 Run it with:
 ```
-> cargo run -- <name of corpus text files>
+> cargo run --release -- <name of corpus text files>
 ```
 
 Pass the text files you want to use as the corpus to solve the keyboard. It will first read the corpus, then build the runs, and then try to solve for the best layout.
@@ -15,7 +15,7 @@ Ones it reaches a local optimum for some time, you can safely stop it and try wh
 
 You can also run with:
 ```
-> cargo run -- <name of corpus text files> --debug
+> cargo run --release -- <name of corpus text files> --debug
 ```
 
 To have it process the corpus, then output the counts of the runs it found.
